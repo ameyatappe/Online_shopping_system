@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://YOUR_BACKEND_URL.onrender.com/api/$1"
+    },
+    {
+      "source": "/clothing.jpg",
+      "destination": "/web/clothing.jpg"
+    },
+    {
+      "source": "/electronics.jpg",
+      "destination": "/web/electronics.jpg"
+    },
+    {
+      "source": "/grocery.jpg",
+      "destination": "/web/grocery.jpg"
+    },
+    {
+      "source": "/config.js",
+      "destination": "/web/config.js"
+    },
+    {
+      "source": "/",
+      "destination": "/web/index.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/web/$1"
+    }
+  ]
+}
