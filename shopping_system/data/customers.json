@@ -1,0 +1,17 @@
+{
+  "Ameya Sachin Tappe": {
+    "type": "Regular Customer",
+    "isPrime": false,
+    "points": 0
+  },
+  "PriyaPrime": {
+    "type": "Prime Member",
+    "isPrime": true,
+    "points": 145
+  },
+  "RegularRohan": {
+    "type": "Customer",
+    "isPrime": false,
+    "points": 0
+  }
+}

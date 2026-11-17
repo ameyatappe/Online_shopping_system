@@ -1,0 +1,16 @@
+# Temporary and log files
+*.log
+*.tmp
+*.temp
+data/test_*.json
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Object files
+*.o
+*.obj

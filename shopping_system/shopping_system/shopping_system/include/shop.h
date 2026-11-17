@@ -29,7 +29,7 @@ namespace Util {                                        // [U1: Namespace]
 
 namespace Shop {
 
-enum Category { ELECTRONICS = 1, CLOTHING, GROCERY };   // [U1: Enumeration]
+enum Category { ELECTRONICS = 1, CLOTHING, GROCERY, SPORTS };   // [U1: Enumeration]
 
 struct Address {                                        // [U1: Structure]
     string city;
@@ -102,17 +102,18 @@ protected:                                              // [U3: Protected member
     string name;
     double price;
     int stock;
+    string image;
 private:                                                // [U1: Access specifiers / info hiding]
     static int count;                                   // [U2: Static data member]
 public:
-    Product() : id(0), name("N/A"), price(0), stock(0) { ++count; }        // default ctor
-    Product(int i, const string& n, double p, int s = 10)                  // [U2: ctor w/ default args]
-        : id(i), name(n), price(p), stock(s) {
+    Product() : id(0), name("N/A"), price(0), stock(0), image("") { ++count; }        // default ctor
+    Product(int i, const string& n, double p, int s = 10, const string& img = "")                  // [U2: ctor w/ default args]
+        : id(i), name(n), price(p), stock(s), image(img) {
         if (p < 0) throw InvalidInputException("price cannot be negative"); // [U4: ctor + exception]
         ++count;
     }
     Product(const Product& o)                                              // copy ctor
-        : id(o.id), name(o.name), price(o.price), stock(o.stock) { ++count; }
+        : id(o.id), name(o.name), price(o.price), stock(o.stock), image(o.image) { ++count; }
     virtual ~Product() { --count; }                     // [U3: Virtual destructor]
 
     virtual double finalPrice() const = 0;              // [U3: Pure virtual function]
@@ -122,12 +123,15 @@ public:
              << "Stock:" << setw(4) << stock;
     }
     virtual string category() const { return "Product"; }
+    virtual string subCategory() const { return category(); }
     string tag() const { return "Product"; }            // NON-virtual -> static binding demo
 
     int getId() const { return id; }                    // [U1: Data abstraction - getters]
     const string& getName() const { return name; }
     double getPrice() const { return price; }
     int getStock() const { return stock; }
+    const string& getImage() const { return image; }
+    void setImage(const string& img) { image = img; }
     void setPrice(double p) {
         if (p < 0) throw InvalidInputException("negative price");
         price = p;
@@ -146,8 +150,8 @@ class Electronics : public Product {                    // [U3: Single / Hierarc
 protected:
     int warranty;
 public:
-    Electronics(int i, const string& n, double p, int s = 10, int w = 1)
-        : Product(i, n, p, s), warranty(w) {}
+    Electronics(int i, const string& n, double p, int s = 10, int w = 1, const string& img = "")
+        : Product(i, n, p, s, img), warranty(w) {}
     double finalPrice() const override { return price + gst(price); }     // 18% GST
     void display() const override {
         Product::display();
@@ -159,17 +163,19 @@ public:
 
 class Laptop : public Electronics {                     // [U3: Multilevel inheritance]
 public:
-    Laptop(int i, const string& n, double p, int s = 5) : Electronics(i, n, p, s, 2) {}
+    Laptop(int i, const string& n, double p, int s = 5, const string& img = "") : Electronics(i, n, p, s, 2, img) {}
     double finalPrice() const override {                // [U3: Overriding member function]
         return Electronics::finalPrice() + price * 0.02;                  // + 2% insurance
     }
+    string category() const override { return "Electronics"; }
+    string subCategory() const override { return "Laptop"; }
 };
 
 class Clothing : public Product {                       // [U3: Hierarchical inheritance]
     string size;
 public:
-    Clothing(int i, const string& n, double p, int s = 20, const string& sz = "M")
-        : Product(i, n, p, s), size(sz) {}
+    Clothing(int i, const string& n, double p, int s = 20, const string& sz = "M", const string& img = "")
+        : Product(i, n, p, s, img), size(sz) {}
     string category() const override { return "Clothing"; }
     double finalPrice() const override { return price + gst(price, 0.05); } // 5% GST
     void display() const override {
@@ -180,12 +186,25 @@ public:
 
 class Grocery : public Product {
 public:
-    Grocery(int i, const string& n, double p, int s = 50) : Product(i, n, p, s) {}
+    Grocery(int i, const string& n, double p, int s = 50, const string& img = "") : Product(i, n, p, s, img) {}
     string category() const override { return "Grocery"; }
     double finalPrice() const override { return price + gst(price, 0.05); }
     void display() const override {
         Product::display();
         cout << " [Grocery] Final: Rs " << finalPrice() << "\n";
+    }
+};
+
+class Sports : public Product {                         // [U3: Hierarchical inheritance]
+    string material;
+public:
+    Sports(int i, const string& n, double p, int s = 15, const string& mat = "English Willow", const string& img = "")
+        : Product(i, n, p, s, img), material(mat) {}
+    string category() const override { return "Sports"; }
+    double finalPrice() const override { return price + gst(price, 0.12); } // 12% GST
+    void display() const override {
+        Product::display();
+        cout << " [Sports " << material << "] Final: Rs " << finalPrice() << "\n";
     }
 };
 
@@ -245,8 +264,10 @@ class Loyalty {
 protected:
     int points;
 public:
-    Loyalty() : points(0) {}
+    explicit Loyalty(int p = 0) : points(p) {}
     int getPoints() const { return points; }
+    void addPoints(int pts) { if (pts > 0) points += pts; }
+    void setPoints(int pts) { points = pts; }
     void show() const { cout << "  Loyalty points: " << points << "\n"; }
 };
 
@@ -264,6 +285,11 @@ public:
     virtual ~Customer() {}
     virtual double placeOrder(Cart& cart, double (*disc)(double));   // [U1: Message passing]
     virtual string type() const { return "Regular Customer"; }
+    virtual bool isPrime() const { return false; }
+    virtual double getDiscountRate() const { return 0.0; }
+    virtual double calculateDiscount(double /*subtotal*/) const { return 0.0; }
+    virtual double getDeliveryFee(double subtotal) const { return (subtotal >= 1000.0) ? 0.0 : 50.0; }
+    virtual int getLoyaltyPoints() const { return 0; }
     void show() const {
         cout << "  " << name << " (ID " << custId << ", " << addr.city << "-" << addr.pin
              << ") - " << type() << "\n";
@@ -283,8 +309,13 @@ public:
 
 class PrimeMember : public Customer, public Loyalty {   // [U3: Multiple inheritance]
 public:
-    explicit PrimeMember(const string& n) : Person(n), Customer(n) {}
+    explicit PrimeMember(const string& n, int initialPoints = 0) : Person(n), Customer(n), Loyalty(initialPoints) {}
     string type() const override { return "Prime Member"; }
+    bool isPrime() const override { return true; }
+    double getDiscountRate() const override { return 0.05; } // 5% exclusive Prime member discount
+    double calculateDiscount(double subtotal) const override { return subtotal * 0.05; }
+    double getDeliveryFee(double /*subtotal*/) const override { return 0.0; } // Free priority express delivery
+    int getLoyaltyPoints() const override { return points; }
     double placeOrder(Cart& cart, double (*disc)(double)) override;
     void show() const {
         Customer::show();                               // [U3: Ambiguity resolved with ::]
@@ -382,7 +413,11 @@ public:
 /* Customer::placeOrder - the "message" sent to a customer object */
 double Customer::placeOrder(Cart& cart, double (*disc)(double)) {
     if (!cart) throw ShopException("Cannot place order: cart is empty");  // uses operator!
-    double payable = disc(cart.total());                // [U2: function pointer call]
+    double base = cart.total();
+    double festiveAdjusted = disc(base);                // [U2: function pointer call]
+    double tierDiscount = calculateDiscount(festiveAdjusted);
+    double delivery = getDeliveryFee(base);
+    double payable = festiveAdjusted - tierDiscount + delivery;
     cart.commit();
     orders.add(payable);
     Order o(payable);
@@ -393,8 +428,9 @@ double Customer::placeOrder(Cart& cart, double (*disc)(double)) {
 double PrimeMember::placeOrder(Cart& cart, double (*disc)(double)) {
     double base = cart.total();
     double paid = Customer::placeOrder(cart, disc);
-    points += (int)(base / 100) * 2;                    // 2 points per Rs 100
-    cout << "  Prime bonus: earned " << (int)(base / 100) * 2 << " points!\n";
+    int earned = (int)(base / 100) * 5;                    // 5 points per Rs 100
+    addPoints(earned);
+    cout << "  Prime bonus: earned " << earned << " loyalty points! Total points: " << points << "\n";
     return paid;
 }
 

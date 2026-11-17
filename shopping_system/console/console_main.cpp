@@ -14,7 +14,7 @@ int readInt(const string& prompt) {
 }
 
 void adminAddProduct(Inventory<Product>& inv) {         // [U2: Dynamic initialization of object]
-    cout << "Category (1=Electronics 2=Clothing 3=Grocery): ";
+    cout << "Category (1=Electronics 2=Clothing 3=Grocery 4=Sports): ";
     int cat = readInt("");
     int id = readInt("Product ID: ");
     cout << "Name: ";
@@ -25,9 +25,10 @@ void adminAddProduct(Inventory<Product>& inv) {         // [U2: Dynamic initiali
     if (inv.find(id)) throw InvalidInputException("Product ID already exists");
     Product* p = nullptr;
     switch (cat) {
-        case ELECTRONICS: p = new Electronics(id, name, price, stock); break;
-        case CLOTHING:    p = new Clothing(id, name, price, stock);    break;
-        case GROCERY:     p = new Grocery(id, name, price, stock);     break;
+        case ELECTRONICS: p = new Electronics(id, name, price, stock, 1, "images/electronics.jpg"); break;
+        case CLOTHING:    p = new Clothing(id, name, price, stock, "M", "images/clothing.jpg");       break;
+        case GROCERY:     p = new Grocery(id, name, price, stock, "images/grocery.jpg");            break;
+        case SPORTS:      p = new Sports(id, name, price, stock, "Standard", "images/sports.jpg");    break;
         default: throw InvalidInputException("unknown category");
     }
     inv.add(p);

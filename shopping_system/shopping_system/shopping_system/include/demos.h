@@ -133,11 +133,13 @@ inline void demoUnit4() {
 }
 
 inline void loadSampleData(Inventory<Product>& inv) {
-    inv.add(new Laptop(101, "Dell Laptop", 55000, 5));
-    inv.add(new Electronics(102, "Smartphone", 20000, 10, 1));
-    inv.add(new Electronics(103, "Headphones", 2500, 25, 1));
-    inv.add(new Clothing(201, "Denim Jacket", 2200, 15, "L"));
-    inv.add(new Clothing(202, "Cotton T-Shirt", 600, 40, "M"));
-    inv.add(new Grocery(301, "Basmati Rice 5kg", 450, 60));
-    inv.add(new Grocery(302, "Olive Oil 1L", 700, 30));
+    inv.add(new Laptop(101, "Dell Laptop", 55000, 5, "images/laptop.jpg"));
+    inv.add(new Electronics(102, "Smartphone", 20000, 10, 1, "images/smartphone.jpg"));
+    inv.add(new Electronics(103, "Headphones", 2500, 25, 1, "images/headphones.jpg"));
+    inv.add(new Electronics(104, "Powerbank", 1499, 20, 1, "images/powerbank.jpg"));
+    inv.add(new Clothing(201, "Denim Jacket", 2200, 15, "L", "images/jacket.jpg"));
+    inv.add(new Clothing(202, "Cotton T-Shirt", 599, 40, "M", "images/tshirt.jpg"));
+    inv.add(new Grocery(301, "Basmati Rice 5kg", 450, 60, "images/rice.jpg"));
+    inv.add(new Grocery(302, "Olive Oil 1L", 700, 30, "images/oliveoil.jpg"));
+    inv.add(new Sports(401, "Cricket Bat", 2499, 15, "English Willow", "images/cricketbat.jpg"));
 }

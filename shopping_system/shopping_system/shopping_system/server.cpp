@@ -8,10 +8,18 @@
 #include "include/httplib.h"
 #include "include/demos.h"
 #include <sstream>
+#include <fstream>
+#include <map>
+#include <cctype>
 #include <mutex>
 #include <memory>
-#include <filesystem>
+#include <sys/stat.h>
 #include <cstdlib>
+
+static bool checkDirExists(const std::string& p) {
+    struct stat info;
+    return (stat(p.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
+}
 
 using namespace std;
 using namespace Shop;
@@ -42,10 +50,137 @@ static string num(double d) { ostringstream os; os << fixed << setprecision(2) <
 
 static string productJson(const Product* p) {
     return "{\"id\":" + to_string(p->getId()) + ",\"name\":" + q(p->getName()) +
-           ",\"category\":" + q(p->category()) + ",\"price\":" + num(p->getPrice()) +
-           ",\"finalPrice\":" + num(p->finalPrice()) + ",\"stock\":" + to_string(p->getStock()) + "}";
+           ",\"category\":" + q(p->category()) + ",\"subCategory\":" + q(p->subCategory()) +
+           ",\"price\":" + num(p->getPrice()) +
+           ",\"finalPrice\":" + num(p->finalPrice()) + ",\"stock\":" + to_string(p->getStock()) +
+           ",\"image\":" + q(p->getImage()) + "}";
 }
 static string errJson(const string& m) { return "{\"error\":" + q(m) + "}"; }
+
+/* ---------------- simple JSON customer persistence ---------------- */
+struct CustomerRecord {
+    string name;
+    string type;
+    bool isPrime;
+    int points;
+};
+
+static string getCustomersFilePath() {
+    if (const char* env_path = getenv("SHOP_CUSTOMERS_FILE")) {
+        return string(env_path);
+    }
+    if (const char* env_path = getenv("CUSTOMERS_FILE")) {
+        return string(env_path);
+    }
+    if (checkDirExists("data")) return "data/customers.json";
+    if (checkDirExists("../data")) return "../data/customers.json";
+    return "customers.json";
+}
+
+static string normalizeName(const string& s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == string::npos) return "";
+    size_t end = s.find_last_not_of(" \t\r\n");
+    string t = s.substr(start, end - start + 1);
+    string res;
+    for (char c : t) res += (char)tolower((unsigned char)c);
+    return res;
+}
+
+static map<string, CustomerRecord> loadCustomersFromDisk() {
+    map<string, CustomerRecord> db;
+    string path = getCustomersFilePath();
+    ifstream ifs(path);
+    if (!ifs.is_open()) return db;
+
+    string line;
+    string currentName;
+    CustomerRecord cur;
+    bool inObj = false;
+
+    while (getline(ifs, line)) {
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == string::npos) continue;
+        string t = line.substr(start);
+
+        size_t colon = t.find(':');
+        if (colon != string::npos && t.find('{') != string::npos && t[0] == '"') {
+            size_t q1 = t.find('"');
+            size_t q2 = t.find('"', q1 + 1);
+            if (q1 != string::npos && q2 != string::npos && q2 < colon) {
+                currentName = t.substr(q1 + 1, q2 - q1 - 1);
+                cur = { currentName, "Customer", false, 0 };
+                inObj = true;
+                continue;
+            }
+        }
+        if (inObj) {
+            if (t.find('}') != string::npos) {
+                if (!currentName.empty()) {
+                    db[currentName] = cur;
+                }
+                inObj = false;
+                currentName.clear();
+                continue;
+            }
+            if (t.find("\"type\"") != string::npos) {
+                size_t c = t.find(':');
+                if (c != string::npos) {
+                    size_t q1 = t.find('"', c);
+                    size_t q2 = (q1 != string::npos) ? t.find('"', q1 + 1) : string::npos;
+                    if (q1 != string::npos && q2 != string::npos) {
+                        cur.type = t.substr(q1 + 1, q2 - q1 - 1);
+                    }
+                }
+            } else if (t.find("\"isPrime\"") != string::npos) {
+                if (t.find("true") != string::npos) cur.isPrime = true;
+                else if (t.find("false") != string::npos) cur.isPrime = false;
+            } else if (t.find("\"points\"") != string::npos) {
+                size_t c = t.find(':');
+                if (c != string::npos) {
+                    string numStr;
+                    for (size_t i = c + 1; i < t.size(); i++) {
+                        if (isdigit(t[i])) numStr += t[i];
+                        else if (!numStr.empty() && !isdigit(t[i])) break;
+                    }
+                    if (!numStr.empty()) cur.points = stoi(numStr);
+                }
+            }
+        }
+    }
+    return db;
+}
+
+static void saveCustomersToDisk(const map<string, CustomerRecord>& db) {
+    string path = getCustomersFilePath();
+    ofstream ofs(path);
+    if (!ofs.is_open()) return;
+    ofs << "{\n";
+    bool first = true;
+    for (const auto& kv : db) {
+        if (!first) ofs << ",\n";
+        first = false;
+        ofs << "  " << q(kv.first) << ": {\n"
+            << "    \"type\": " << q(kv.second.type) << ",\n"
+            << "    \"isPrime\": " << (kv.second.isPrime ? "true" : "false") << ",\n"
+            << "    \"points\": " << kv.second.points << "\n"
+            << "  }";
+    }
+    ofs << "\n}\n";
+}
+
+static void persistCustomer(const string& name, const string& type, bool isPrime, int points) {
+    auto db = loadCustomersFromDisk();
+    string targetKey = name;
+    for (const auto& kv : db) {
+        if (normalizeName(kv.first) == normalizeName(name)) {
+            targetKey = kv.first; // update existing canonical capitalization
+            break;
+        }
+    }
+    db[targetKey] = { targetKey, type, isPrime, points };
+    saveCustomersToDisk(db);
+}
 
 static int toInt(const string& s, const string& field) {
     try { size_t pos; int v = stoi(s, &pos); if (pos != s.size()) throw 1; return v; }
@@ -74,14 +209,16 @@ static void handle(httplib::Response& res, F fn) {
 
 static string sessionJson() {
     if (!user) return "{\"loggedIn\":false}";
-    int pts = 0;
-    if (auto* pm = dynamic_cast<PrimeMember*>(user.get())) pts = pm->getPoints();   // RTTI downcast
+    int pts = user->getLoyaltyPoints();
+    bool isPrime = user->isPrime();
     return "{\"loggedIn\":true,\"name\":" + q(user->getName()) + ",\"type\":" + q(user->type()) +
+           ",\"isPrime\":" + (isPrime ? "true" : "false") +
            ",\"id\":" + to_string(user->getId()) + ",\"points\":" + to_string(pts) +
+           ",\"discountRate\":" + num(user->getDiscountRate()) +
            ",\"city\":" + q(user->getAddress().city) + "}";
 }
 
-static string cartJson() {
+static string cartJson(bool applyFestive = true) {
     string items = "[";
     for (int i = 0; i < cart.count(); i++) {
         Product* p = cart.itemAt(i);
@@ -92,9 +229,25 @@ static string cartJson() {
                  ",\"line\":" + num(p->finalPrice() * cart.qtyAt(i)) + "}";
     }
     items += "]";
-    double total = cart.total();
-    return "{\"items\":" + items + ",\"total\":" + num(total) +
-           ",\"festiveTotal\":" + num(festiveDiscount(total)) + "}";
+    double base = cart.total();
+    if (base == 0.0) {
+        return "{\"items\":[],\"total\":0.00,\"festiveTotal\":0.00,\"festiveDiscount\":0.00,"
+               "\"primeDiscount\":0.00,\"deliveryFee\":0.00,\"finalTotal\":0.00,\"potentialPoints\":0}";
+    }
+    double festiveAdjusted = applyFestive ? festiveDiscount(base) : base;
+    double festiveDiscAmount = base - festiveAdjusted;
+    double primeDisc = user ? user->calculateDiscount(festiveAdjusted) : 0.0;
+    double delivery = user ? user->getDeliveryFee(base) : (base >= 1000.0 ? 0.0 : 50.0);
+    double finalTotal = festiveAdjusted - primeDisc + delivery;
+    int potentialPoints = (user && user->isPrime()) ? (int)(base / 100) * 5 : 0;
+
+    return "{\"items\":" + items + ",\"total\":" + num(base) +
+           ",\"festiveTotal\":" + num(festiveAdjusted) +
+           ",\"festiveDiscount\":" + num(festiveDiscAmount) +
+           ",\"primeDiscount\":" + num(primeDisc) +
+           ",\"deliveryFee\":" + num(delivery) +
+           ",\"finalTotal\":" + num(finalTotal) +
+           ",\"potentialPoints\":" + to_string(potentialPoints) + "}";
 }
 
 int main(int argc, char** argv) {
@@ -132,7 +285,7 @@ int main(int argc, char** argv) {
     });
 
     /* static UI (if present) */
-    string webDir = filesystem::exists("web") ? "web" : (filesystem::exists("../web") ? "../web" : "");
+    string webDir = checkDirExists("web") ? "web" : (checkDirExists("../web") ? "../web" : "");
     if (!webDir.empty()) {
         svr.set_mount_point("/", webDir);
     } else {
@@ -175,12 +328,50 @@ int main(int argc, char** argv) {
     /* ---------- session ---------- */
     svr.Post("/api/login", [](const httplib::Request& req, httplib::Response& res) {
         handle(res, [&] {
-            string name = req.get_param_value("name");
-            if (name.empty()) throw InvalidInputException("name is required");
+            string rawName = req.get_param_value("name");
+            size_t start = rawName.find_first_not_of(" \t\r\n");
+            if (start == string::npos) throw InvalidInputException("name is required");
+            size_t end = rawName.find_last_not_of(" \t\r\n");
+            string name = rawName.substr(start, end - start + 1);
+
             bool prime = req.get_param_value("prime") == "1";
             cart.clear();
-            if (prime) user.reset(new PrimeMember(name));             // Customer* -> PrimeMember
-            else       user.reset(new Customer(name));
+
+            auto db = loadCustomersFromDisk();
+            const CustomerRecord* existing = nullptr;
+            string canonicalName = name;
+
+            for (const auto& kv : db) {
+                if (normalizeName(kv.first) == normalizeName(name)) {
+                    existing = &kv.second;
+                    canonicalName = kv.first; // Preserve canonical registered name
+                    break;
+                }
+            }
+
+            if (existing) {
+                // Enforce membership consistency for existing accounts
+                if (existing->isPrime && !prime) {
+                    throw ShopException("Account '" + canonicalName + "' is registered as a Prime Member. Please select 'Prime Membership' to log in.");
+                }
+                if (!existing->isPrime && prime) {
+                    throw ShopException("Account '" + canonicalName + "' is registered as a Regular Customer. Please log in without selecting Prime Membership.");
+                }
+                if (existing->isPrime) {
+                    user.reset(new PrimeMember(canonicalName, existing->points));
+                } else {
+                    user.reset(new Customer(canonicalName));
+                }
+            } else {
+                // New registration
+                if (prime) {
+                    user.reset(new PrimeMember(name, 0));
+                    persistCustomer(name, "Prime Member", true, 0);
+                } else {
+                    user.reset(new Customer(name));
+                    persistCustomer(name, "Regular Customer", false, 0);
+                }
+            }
             return sessionJson();
         });
     });
@@ -192,8 +383,11 @@ int main(int argc, char** argv) {
     });
 
     /* ---------- cart ---------- */
-    svr.Get("/api/cart", [](const httplib::Request&, httplib::Response& res) {
-        handle(res, [&] { return cartJson(); });
+    svr.Get("/api/cart", [](const httplib::Request& req, httplib::Response& res) {
+        handle(res, [&] {
+            bool festive = req.get_param_value("festive") != "0";
+            return cartJson(festive);
+        });
     });
     svr.Post("/api/cart/add", [](const httplib::Request& req, httplib::Response& res) {
         handle(res, [&] {
@@ -203,17 +397,23 @@ int main(int argc, char** argv) {
             Product* p = inventory.find(id);                          // overloaded find(int)
             if (!p) throw InvalidInputException("no such product");
             cart.add(p, qty);
-            return cartJson();
+            bool festive = req.get_param_value("festive") != "0";
+            return cartJson(festive);
         });
     });
     svr.Post("/api/cart/remove", [](const httplib::Request& req, httplib::Response& res) {
         handle(res, [&] {
             cart.removeAt(toInt(req.get_param_value("index"), "index"));
-            return cartJson();
+            bool festive = req.get_param_value("festive") != "0";
+            return cartJson(festive);
         });
     });
-    svr.Post("/api/cart/undo", [](const httplib::Request&, httplib::Response& res) {
-        handle(res, [&] { --cart; return cartJson(); });              // overloaded unary operator--
+    svr.Post("/api/cart/undo", [](const httplib::Request& req, httplib::Response& res) {
+        handle(res, [&] {
+            --cart;                                                   // overloaded unary operator--
+            bool festive = req.get_param_value("festive") != "0";
+            return cartJson(festive);
+        });
     });
 
     /* ---------- checkout / orders ---------- */
@@ -222,8 +422,14 @@ int main(int argc, char** argv) {
             needLogin();
             bool festive = req.get_param_value("festive") == "1";
             double (*disc)(double) = festive ? festiveDiscount : noDiscount;   // function pointer
+            int ptsBefore = user->getLoyaltyPoints();
             double paid = user->placeOrder(cart, disc);               // message passing, dynamic binding
+            int ptsAfter = user->getLoyaltyPoints();
+            int ptsEarned = ptsAfter - ptsBefore;
+            // Persist updated customer points on successful checkout
+            persistCustomer(user->getName(), user->type(), user->isPrime(), user->getLoyaltyPoints());
             return "{\"orderNo\":" + to_string(Order::lastOrderNo()) + ",\"paid\":" + num(paid) +
+                   ",\"pointsEarned\":" + to_string(ptsEarned) +
                    ",\"session\":" + sessionJson() + "}";
         });
     });
@@ -245,14 +451,16 @@ int main(int argc, char** argv) {
             string name = req.get_param_value("name");
             double price = toDouble(req.get_param_value("price"), "price");
             int stock = toInt(req.get_param_value("stock"), "stock");
+            string img = req.get_param_value("image");
             if (name.empty()) throw InvalidInputException("name is required");
             if (inventory.find(id)) throw InvalidInputException("product ID already exists");
             if (stock < 0) throw InvalidInputException("stock cannot be negative");
             Product* p = nullptr;                                     // dynamic initialisation
             switch (cat) {
-                case ELECTRONICS: p = new Electronics(id, name, price, stock); break;
-                case CLOTHING:    p = new Clothing(id, name, price, stock);    break;
-                case GROCERY:     p = new Grocery(id, name, price, stock);     break;
+                case ELECTRONICS: p = new Electronics(id, name, price, stock, 1, img.empty() ? "images/electronics.jpg" : img); break;
+                case CLOTHING:    p = new Clothing(id, name, price, stock, "M", img.empty() ? "images/clothing.jpg" : img);       break;
+                case GROCERY:     p = new Grocery(id, name, price, stock, img.empty() ? "images/grocery.jpg" : img);            break;
+                case SPORTS:      p = new Sports(id, name, price, stock, "Standard", img.empty() ? "images/sports.jpg" : img); break;
                 default: throw InvalidInputException("unknown category");
             }
             inventory.add(p);
